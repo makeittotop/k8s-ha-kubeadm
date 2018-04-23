@@ -1,0 +1,150 @@
+#kubeadm install ref
+#kubeadm init --apiserver-advertise-address=172.17.0.11
+#echo "Environment=\"KUBELET_EXTRA_ARGS=--node-ip=172.17.0.11\"" >> /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+#export kubever=$(KUBECONFIG=/etc/kubernetes/admin.conf kubectl version | base64 | tr -d '\n')
+#KUBECONFIG=/etc/kubernetes/admin.conf  kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$kubever"
+#kubeadm join 172.17.0.11:6443 --token 26mrp8.560ea6oxo1q2k3ip --discovery-token-ca-cert-hash sha256:a6c35e5e257037adb6fbd4305273e7fbf34ae793566eee68f38eb71ebf195142
+
+scp root@apareek-dv-kub-ch011:/etc/kubernetes/pki/etcd/ca.pem .
+scp root@apareek-dv-kub-ch011:/etc/kubernetes/pki/etcd/ca-key.pem .
+scp root@apareek-dv-kub-ch011:/etc/kubernetes/pki/etcd/client.pem .
+scp root@apareek-dv-kub-ch011:/etc/kubernetes/pki/etcd/client-key.pem .
+scp root@apareek-dv-kub-ch011:/etc/kubernetes/pki/etcd/ca-config.json .
+
+cat >/etc/kubernetes/manifests/etcd.yaml <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+labels:
+    component: etcd
+    tier: control-plane
+name: apareek-dv-kub-ch013
+namespace: kube-system
+spec:
+containers:
+- command:
+    - etcd --name ${PEER_NAME} \
+    - --data-dir /var/lib/etcd \
+    - --listen-client-urls https://${PRIVATE_IP}:2379 \
+    - --advertise-client-urls https://${PRIVATE_IP}:2379 \
+    - --listen-peer-urls https://${PRIVATE_IP}:2380 \
+    - --initial-advertise-peer-urls https://${PRIVATE_IP}:2380 \
+    - --cert-file=/certs/server.pem \
+    - --key-file=/certs/server-key.pem \
+    - --client-cert-auth \
+    - --trusted-ca-file=/certs/ca.pem \
+    - --peer-cert-file=/certs/peer.pem \
+    - --peer-key-file=/certs/peer-key.pem \
+    - --peer-client-cert-auth \
+    - --peer-trusted-ca-file=/certs/ca.pem \
+    - --initial-cluster etcd0=https://172.17.0.11:2380,etcd1=https://172.17.0.12:2380,etcd2=https://172.17.0.13:2380 \
+    - --initial-cluster-token my-etcd-token \
+    - --initial-cluster-state new
+    image: k8s.gcr.io/etcd-amd64:3.1.10
+    livenessProbe:
+    httpGet:
+        path: /health
+        port: 2379
+        scheme: HTTP
+    initialDelaySeconds: 15
+    timeoutSeconds: 15
+    name: etcd
+    env:
+    - name: PUBLIC_IP
+    valueFrom:
+        fieldRef:
+        fieldPath: status.hostIP
+    - name: PRIVATE_IP
+    valueFrom:
+        fieldRef:
+        fieldPath: status.podIP
+    - name: PEER_NAME
+    valueFrom:
+        fieldRef:
+        fieldPath: metadata.name
+    volumeMounts:
+    - mountPath: /var/lib/etcd
+    name: etcd
+    - mountPath: /certs
+    name: certs
+hostNetwork: true
+volumes:
+- hostPath:
+    path: /var/lib/etcd
+    type: DirectoryOrCreate
+    name: etcd
+- hostPath:
+    path: /etc/kubernetes/pki/etcd
+    name: certs
+EOF
+
+cat >config.yaml <<EOF
+apiVersion: kubeadm.k8s.io/v1alpha1
+kind: MasterConfiguration
+api:
+  advertiseAddress: ${PRIVATE_IP}
+etcd:
+  endpoints:
+  - https://172.17.0.11:2379
+  - https://172.17.0.12:2379
+  - https://172.17.0.13:2379
+  caFile: /etc/kubernetes/pki/etcd/ca.pem
+  certFile: /etc/kubernetes/pki/etcd/client.pem
+  keyFile: /etc/kubernetes/pki/etcd/client-key.pem
+networking:
+  podSubnet: 10.32.0.0/12
+apiServerCertSANs:
+- 172.17.0.10
+apiServerExtraArgs:
+  apiserver-count: "3"
+EOF
+
+cat > /etc/keepalived/check_apiserver.sh
+#!/bin/sh
+
+ errorExit() {
+     echo "*** $*" 1>&2
+     exit 1
+ }
+
+ curl --silent --max-time 2 --insecure https://localhost:6443/ -o /dev/null || errorExit "Error GET https://localhost:6443/"
+ if ip addr | grep -q 172.17.0.10; then
+     curl --silent --max-time 2 --insecure https://172.17.0.10:6443/ -o /dev/null || errorExit "Error GET https://172.17.0.10:6443/"
+ fi
+
+ cat >/etc/systemd/system/etcd.service <<EOF
+[Unit]
+Description=etcd
+Documentation=https://github.com/coreos/etcd
+Conflicts=etcd.service
+Conflicts=etcd2.service
+
+[Service]
+EnvironmentFile=/etc/etcd.env
+Type=notify
+Restart=always
+RestartSec=5s
+LimitNOFILE=40000
+TimeoutStartSec=0
+
+ExecStart=/usr/local/bin/etcd --name ${PEER_NAME} \
+    --data-dir /var/lib/etcd \
+    --listen-client-urls https://${PRIVATE_IP}:2379 \
+    --advertise-client-urls https://${PRIVATE_IP}:2379 \
+    --listen-peer-urls https://${PRIVATE_IP}:2380 \
+    --initial-advertise-peer-urls https://${PRIVATE_IP}:2380 \
+    --cert-file=/etc/kubernetes/pki/etcd/server.pem \
+    --key-file=/etc/kubernetes/pki/etcd/server-key.pem \
+    --client-cert-auth \
+    --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.pem \
+    --peer-cert-file=/etc/kubernetes/pki/etcd/peer.pem \
+    --peer-key-file=/etc/kubernetes/pki/etcd/peer-key.pem \
+    --peer-client-cert-auth \
+    --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.pem \
+    --initial-cluster apareek-dv-kub-ch011=https://172.17.0.11:2380,apareek-dv-kub-ch012=https://172.17.0.12:2380,apareek-dv-kub-ch013=https://172.17.0.13:2380 \
+    --initial-cluster-token my-etcd-token \
+    --initial-cluster-state new
+
+[Install]
+WantedBy=multi-user.target
+EOF
