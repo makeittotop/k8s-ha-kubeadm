@@ -1,100 +1,16 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
-
-# All Vagrant configuration is done below. The "2" in Vagrant.configure
-# configures the configuration version (we support older styles for
-# backwards compatibility). Please don't change it unless you know what
-# you're doing.
-Vagrant.configure("2") do |config|
-  # The most common configuration options are documented and commented below.
-  # For a complete reference, please see the online documentation at
-  # https://docs.vagrantup.com.
-
-  # Every Vagrant development environment requires a box. You can search for
-  # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "base"
-
-  # Disable automatic box update checking. If you disable this, then
-  # boxes will only be checked for updates when the user runs
-  # `vagrant box outdated`. This is not recommended.
-  # config.vm.box_check_update = false
-
-  # Create a forwarded port mapping which allows access to a specific port
-  # within the machine from a port on the host machine. In the example below,
-  # accessing "localhost:8080" will access port 80 on the guest machine.
-  # NOTE: This will enable public access to the opened port
-  # config.vm.network "forwarded_port", guest: 80, host: 8080
-
-  # Create a forwarded port mapping which allows access to a specific port
-  # within the machine from a port on the host machine and only allow access
-  # via 127.0.0.1 to disable public access
-  # config.vm.network "forwarded_port", guest: 80, host: 8080, host_ip: "127.0.0.1"
-
-  # Create a private network, which allows host-only access to the machine
-  # using a specific IP.
-  # config.vm.network "private_network", ip: "192.168.33.10"
-
-  # Create a public network, which generally matched to bridged network.
-  # Bridged networks make the machine appear as another physical device on
-  # your network.
-  # config.vm.network "public_network"
-
-  # Share an additional folder to the guest VM. The first argument is
-  # the path on the host to the actual folder. The second argument is
-  # the path on the guest to mount the folder. And the optional third
-  # argument is a set of non-required options.
-  # config.vm.synced_folder "../data", "/vagrant_data"
-
-  # Provider-specific configuration so you can fine-tune various
-  # backing providers for Vagrant. These expose provider-specific options.
-  # Example for VirtualBox:
-  #
-  # config.vm.provider "virtualbox" do |vb|
-  #   # Display the VirtualBox GUI when booting the machine
-  #   vb.gui = true
-  #
-  #   # Customize the amount of memory on the VM:
-  #   vb.memory = "1024"
-  # end
-  #
-  # View the documentation for the provider you are using for more
-  # information on available options.
-
-  # Enable provisioning with a shell script. Additional provisioners such as
-  # Puppet, Chef, Ansible, Salt, and Docker are also available. Please see the
-  # documentation for more information about their specific syntax and use.
-  # config.vm.provision "shell", inline: <<-SHELL
-  #   apt-get update
-  #   apt-get install -y apache2
-  # SHELL
-end
-
-# -*- mode: ruby -*-
-# vi: set ft=ruby :
 # Every Vagrant development environment requires a box. You can search for
 # boxes at https://atlas.hashicorp.com/search.
-BOX_IMAGE = "bento/ubuntu-16.04"
-NODE_COUNT = 3
+BOX_IMAGE = "bento/ubuntu-18.04"
+MASTER_NODE_COUNT = 3
+WORKER_COUNT=2
+PROVISIONED_MASTER_COUNT=0
 Vagrant.configure("2") do |config|
- #config.vm.define "master" do |subconfig|
- #subconfig.vm.box = BOX_IMAGE
- #subconfig.vm.hostname = "master"
- #subconfig.vm.network :private_network, ip: "192.168.77.10"
- #end
-
  config.vm.provider "virtualbox" do |v|
   v.linked_clone = true
   v.memory = 4096
   v.cpus = 2
- end
-
- (1..NODE_COUNT).each do |i|
-  config.vm.define "kube-node0#{i}" do |subconfig|
-    subconfig.vm.box = BOX_IMAGE
-    subconfig.vm.hostname = "apareek-dv-kub-ch01#{i}"
-    subconfig.vm.network :private_network, ip: "172.17.0.#{i + 10}" #type: "dhcp" #
-      #subconfig.vm.virtualbox__intnet => true
-  end
  end
 
  # Install avahi on all machines
@@ -103,5 +19,49 @@ Vagrant.configure("2") do |config|
  SHELL
 
  # Install kubeadm scripts on all machines
- config.vm.provision "shell", path: "kubeadm-bootstrap-script.sh"
+ config.vm.provision "shell", path: "scripts/kubeadm-bootstrap-common.sh"
+ # bootstrap etcd cluster on all machines
+ config.vm.provision "shell", path: "scripts/etcd-cluster-bootstrap.sh"
+
+ # master0
+ config.vm.define "kube-master0" do |subconfig|
+   subconfig.vm.box = BOX_IMAGE
+   subconfig.vm.hostname = "kube-master0"
+   subconfig.vm.network :private_network, ip: "172.17.0.50"
+
+   # master0 part 1 - kubeadm bootstrap
+   subconfig.vm.provision "shell", inline: "scripts/kubeadm-master0-bootstrap-part1.sh"
+   # master0 part 2 - kubeadm bootstrap
+   subconfig.vm.provision "shell", path: "scripts/kubeadm-master0-bootstrap-part2.sh"   
+
+   PROVISIONED_MASTER_COUNT = PROVISIONED_MASTER_COUNT + 1
+ end
+
+# other masters
+ (1..(MASTER_NODE_COUNT - PROVISIONED_MASTER_COUNT)).each do |i|
+  config.vm.define "kube-master#{i}" do |subconfig|
+    subconfig.vm.box = BOX_IMAGE
+    subconfig.vm.hostname = "kube-master#{i}"
+    subconfig.vm.network :private_network, ip: "172.17.0.#{i + 50}" #type: "dhcp" #
+
+    # other masters part 1 - kubeadm bootstrap
+    subconfig.vm.provision "shell", inline: "scripts/kubeadm-other-masters-bootstrap-part1.sh"
+    # other masters part 2 - kubeadm bootstrap
+    subconfig.vm.provision "shell", path: "scripts/kubeadm-other-masters-bootstrap-part2.sh"
+  end
+ end
+
+ # lb bootstrap
+ #config.vm.provision "shell", path: "lb-bootstrap.sh"
+
+ # bootstrap etcd cluster on all machines
+ # config.vm.provision "shell", path: "scripts/etcd-cluster-bootstrap.sh"
+
+# master0 part 2 - kubeadm bootstrap
+# config.vm.provision "shell", path: "scripts/kubeadm-master0-bootstrap-part2.sh"
+
+# other masters part 2 - kubeadm bootstrap
+# config.vm.provision "shell", path: "scripts/kubeadm-other-masters-bootstrap-part2.sh"
+
+
 end
