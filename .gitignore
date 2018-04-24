@@ -1,0 +1,4 @@
+.vagrant/
+etcd/
+pki/
+scripts/test*

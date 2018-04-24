@@ -6,7 +6,7 @@ export PRIVATE_IP=$(ip addr show eth1 | grep -Po 'inet \K[\d.]+')
 
 #yes y | ssh-keygen -t rsa -b 2048 -C "" -N "" -f ~/.ssh/id_rsa
 mkdir -p /etc/kubernetes/pki/etcd
-cd /vagrant/etcd
+cd /etc/kubernetes/pki/etcd
 cp /vagrant/etcd/ca.pem .
 cp /vagrant/etcd/ca-key.pem .
 cp /vagrant/etcd/client.pem .
@@ -24,5 +24,6 @@ cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=peer
 export state=BACKUP
 export eth=eth1
 export priority=100
-export load-balancer-ip=172.17.0.49
-. lb-bootstrap.sh
+export load_balancer_ip=172.17.0.49
+echo $PWD
+. /vagrant/scripts/lb-bootstrap.sh

@@ -27,7 +27,7 @@ cat >/etc/keepalived/keepalived.conf <<EOF
          auth_pass 4be37dc3b4c90194d1600c483e10ad1d
      }
      virtual_ipaddress {
-         ${load-balancer-ip}
+         ${load_balancer_ip}
      }
      track_script {
          check_apiserver
@@ -44,8 +44,8 @@ errorExit() {
 }
 
 curl --silent --max-time 2 --insecure https://localhost:6443/ -o /dev/null || errorExit "Error GET https://localhost:6443/"
-if ip addr | grep -q ${load-balancer-ip}; then
-    curl --silent --max-time 2 --insecure https:/${load-balancer-ip}:6443/ -o /dev/null || errorExit "Error GET https://${load-balancer-ip}:6443/"
+if ip addr | grep -q ${load_balancer_ip}; then
+    curl --silent --max-time 2 --insecure https:/${load_balancer_ip}:6443/ -o /dev/null || errorExit "Error GET https://${load_balancer_ip}:6443/"
 fi
 EOF
 

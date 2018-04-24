@@ -34,9 +34,9 @@ curl -o /usr/local/bin/cfssljson https://pkg.cfssl.org/R1.2/cfssljson_linux-amd6
 chmod +x /usr/local/bin/cfssl*
 # configure /etc/hosts
 cat >/etc/hosts <<EOF
-localhost 127.0.0.1
-kube-master0 172.17.0.50
-kube-master1 172.17.0.51
-kube-master2 172.17.0.52
-kube-cluster 172.17.0.49
+127.0.0.1 localhost
+172.17.0.50 kube-master0
+172.17.0.51 kube-master1 
+172.17.0.52 kube-master2 
+172.17.0.49 kube-cluster 
 EOF

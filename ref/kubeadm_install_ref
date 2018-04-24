@@ -148,3 +148,7 @@ ExecStart=/usr/local/bin/etcd --name ${PEER_NAME} \
 [Install]
 WantedBy=multi-user.target
 EOF
+
+
+   45  systemctl enable etcd keepalived
+   46  vi /etc/fstab 

@@ -50,6 +50,15 @@ cat >ca-csr.json <<EOF
 }
 EOF
 cfssl gencert -initca ca-csr.json | cfssljson -bare ca -
+cat >client.json <<EOF
+{
+    "CN": "client",
+    "key": {
+        "algo": "ecdsa",
+        "size": 256
+    }
+}
+EOF
 cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client client.json | cfssljson -bare client
 
 export PEER_NAME=$(hostname)
@@ -67,5 +76,5 @@ cp /etc/kubernetes/pki/etcd /vagrant/ -rfv
 export state=MASTER
 export eth=eth1
 export priority=101
-export load-balancer-ip=172.17.0.49
-. lb-bootstrap.sh
+export load_balancer_ip=172.17.0.49
+. /vagrant/scripts/lb-bootstrap.sh
